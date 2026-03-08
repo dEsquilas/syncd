@@ -132,7 +132,7 @@ else
     cron_line="*/30 * * * * $LINK_PATH push $CRON_TAG"
     current=$(crontab -l 2>/dev/null || true)
     # Remove any old syncd entries without the tag
-    filtered=$(echo "$current" | grep -v "syncd push" || true)
+    filtered=$(echo "$current" | grep -v "$CRON_TAG" || true)
     if [[ -n "$filtered" ]]; then
       printf '%s\n%s\n' "$filtered" "$cron_line" | crontab -
     else
