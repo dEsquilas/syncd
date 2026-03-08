@@ -44,7 +44,7 @@ Brings all repos up to date with their remotes. Safe to run anytime.
 
 For each repo:
 1. If there are uncommitted local changes, stashes them automatically
-2. Runs `git pull --rebase` to fast-forward without merge commits
+2. Runs `git pull` (merge, never rebase)
 3. Restores the stash. If there are conflicts, flags them for manual resolution
 
 ### `syncd push`
@@ -54,7 +54,8 @@ Commits and pushes all repos that have local changes. Designed for cron — repo
 For each repo with changes:
 1. Stages everything (`git add -A`)
 2. Commits with an auto-generated message: `syncd: 2026-03-08 14:30 — macbook`
-3. Pushes to the remote
+3. Fetches remote — if the remote is ahead, pulls (merge) before pushing
+4. Pushes to the remote
 
 ### `syncd status`
 
@@ -62,6 +63,15 @@ Shows the state of each repo at a glance:
 - Current branch
 - Sync state relative to upstream: ahead (↑), behind (↓), or in sync (≡)
 - Number of files with local changes, or "Clean"
+
+### `syncd add <path>`
+
+Adds a repo to `~/.syncpaths`. Validates that the path exists and contains a git repo. Detects duplicates. Paths are stored with `~` notation.
+
+```bash
+syncd add ~/Develop/dotfiles
+syncd add .                    # current directory
+```
 
 ### `syncd check`
 
