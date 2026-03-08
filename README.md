@@ -73,6 +73,14 @@ syncd add ~/Develop/dotfiles
 syncd add .                    # current directory
 ```
 
+### `syncd list`
+
+Shows all repos currently configured in `~/.syncdrc`.
+
+### `syncd log [N]`
+
+Shows the last N entries from `~/.syncd.log` (default 20). Includes both successful operations (PULL, PUSH) and errors.
+
 ### `syncd check`
 
 Validates that every path in `~/.syncdrc`:
