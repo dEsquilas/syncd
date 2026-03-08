@@ -91,7 +91,7 @@ cmd_pull() {
     local stashed=false
     if [[ -n "$(git status --porcelain)" ]]; then
       info "Stashing local changes..."
-      if git stash push -m "syncd auto-stash $DATE" --quiet 2>/dev/null; then
+      if git stash push --include-untracked -m "syncd auto-stash $DATE" --quiet 2>/dev/null; then
         stashed=true
       else
         warn "Stash failed — skipping repo to protect local changes"
