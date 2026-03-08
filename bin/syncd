@@ -374,7 +374,9 @@ cmd_cron() {
       local interval="${2:-30m}"
       local schedule
       schedule=$(parse_interval "$interval")
-      local cron_line="$schedule $SYNCD_LINK push $CRON_TAG"
+      local git_dir
+      git_dir="$(dirname "$(command -v git)")"
+      local cron_line="$schedule PATH=$git_dir:/usr/bin:/bin $SYNCD_LINK push $CRON_TAG"
 
       # Remove existing syncd cron entry if any
       local current

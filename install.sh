@@ -130,7 +130,8 @@ if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
 else
   read -rp "Set up cron for 'syncd push' every 30 min? [y/N] " cron_answer
   if [[ "$cron_answer" =~ ^[yY]$ ]]; then
-    cron_line="*/30 * * * * $LINK_PATH push $CRON_TAG"
+    git_dir="$(dirname "$(command -v git)")"
+    cron_line="*/30 * * * * PATH=$git_dir:/usr/bin:/bin $LINK_PATH push $CRON_TAG"
     current=$(crontab -l 2>/dev/null || true)
     # Remove any old syncd entries without the tag
     filtered=$(echo "$current" | grep -v "$CRON_TAG" || true)
