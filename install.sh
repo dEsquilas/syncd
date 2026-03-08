@@ -107,7 +107,8 @@ fi
 echo -e "\n${BOLD}Validating ~/.syncdrc${NC}"
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line%%#*}"
-  line="$(echo "$line" | xargs)"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
   [[ -z "$line" ]] && continue
 
   path="${line/#\~/$HOME}"
