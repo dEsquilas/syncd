@@ -92,13 +92,11 @@ cmd_pull() {
   for repo in "${REPOS[@]}"; do
     header "$(basename "$repo")"
 
-    cd "$repo"
-
     local stashed=false
-    if [[ -n "$(git status --porcelain)" ]]; then
+    if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
       info "Stashing local changes..."
       local stash_out
-      if stash_out=$(git stash push --include-untracked -m "syncd auto-stash $(date '+%Y-%m-%d %H:%M')" --quiet 2>&1); then
+      if stash_out=$(git -C "$repo" stash push --include-untracked -m "syncd auto-stash $(date '+%Y-%m-%d %H:%M')" --quiet 2>&1); then
         stashed=true
       else
         warn "Stash failed — skipping repo to protect local changes"
@@ -109,8 +107,8 @@ cmd_pull() {
 
     local pull_ok=false
     local pull_out
-    if pull_out=$(git pull --quiet 2>&1); then
-      ok "Pulled ($(git rev-parse --abbrev-ref HEAD))"
+    if pull_out=$(git -C "$repo" pull --quiet 2>&1); then
+      ok "Pulled ($(git -C "$repo" rev-parse --abbrev-ref HEAD))"
       log_sync "PULL $repo"
       pull_ok=true
     else
@@ -124,7 +122,7 @@ cmd_pull() {
         info "Run 'git stash pop' in $repo after resolving conflicts"
       else
         local pop_out
-        if pop_out=$(git stash pop --quiet 2>&1); then
+        if pop_out=$(git -C "$repo" stash pop --quiet 2>&1); then
           ok "Stash restored"
         else
           warn "Stash pop had conflicts — resolve manually"
@@ -139,35 +137,33 @@ cmd_pull() {
 cmd_push() {
   load_repos
   for repo in "${REPOS[@]}"; do
-    cd "$repo"
-
-    if [[ -z "$(git status --porcelain)" ]]; then
+    if [[ -z "$(git -C "$repo" status --porcelain)" ]]; then
       continue
     fi
 
     header "$(basename "$repo")"
 
-    git add -A
+    git -C "$repo" add -A
     local git_out
-    if git_out=$(git commit -m "syncd: $(date '+%Y-%m-%d %H:%M') — $HOSTNAME" --quiet 2>&1); then
+    if git_out=$(git -C "$repo" commit -m "syncd: $(date '+%Y-%m-%d %H:%M') — $HOSTNAME" --quiet 2>&1); then
       # Fetch and pull if remote is ahead before pushing
-      git fetch --quiet 2>&1 || true
+      git -C "$repo" fetch --quiet 2>&1 || true
       local upstream
-      upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
+      upstream=$(git -C "$repo" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
       if [[ -n "$upstream" ]]; then
         local behind
-        behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
+        behind=$(git -C "$repo" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
         if [[ "$behind" -gt 0 ]]; then
           info "Remote is ahead by $behind commit(s), pulling..."
           local pull_out
-          if ! pull_out=$(git pull --quiet 2>&1); then
+          if ! pull_out=$(git -C "$repo" pull --quiet 2>&1); then
             err "Pull failed — resolve conflicts manually"
             log_error "pull failed before push in $repo: $pull_out"
             continue
           fi
         fi
       fi
-      if git_out=$(git push --quiet 2>&1); then
+      if git_out=$(git -C "$repo" push --quiet 2>&1); then
         ok "Pushed"
         log_sync "PUSH $repo"
       else
@@ -186,18 +182,16 @@ cmd_status() {
   for repo in "${REPOS[@]}"; do
     header "$(basename "$repo")"
 
-    cd "$repo"
-
     local branch
-    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "???")
+    branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "???")
 
     # Ahead/behind
     local upstream
-    upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
+    upstream=$(git -C "$repo" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
     if [[ -n "$upstream" ]]; then
       local ahead behind
-      ahead=$(git rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)
-      behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
+      ahead=$(git -C "$repo" rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)
+      behind=$(git -C "$repo" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
       local sync_info=""
       [[ "$ahead" -gt 0 ]] && sync_info+=" ↑${ahead}"
       [[ "$behind" -gt 0 ]] && sync_info+=" ↓${behind}"
@@ -209,7 +203,7 @@ cmd_status() {
 
     # Local changes
     local changes
-    changes=$(git status --porcelain)
+    changes=$(git -C "$repo" status --porcelain)
     if [[ -n "$changes" ]]; then
       local count
       count=$(echo "$changes" | wc -l | tr -d ' ')
