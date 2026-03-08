@@ -19,6 +19,10 @@ log_error() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOGFILE"
 }
 
+log_sync() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOGFILE"
+}
+
 warn() {
   echo -e "${YELLOW}⚠ $*${NC}"
 }
@@ -99,6 +103,7 @@ cmd_pull() {
     local pull_ok=false
     if git pull --quiet 2>/dev/null; then
       ok "Pulled ($(git rev-parse --abbrev-ref HEAD))"
+      log_sync "PULL $repo"
       pull_ok=true
     else
       err "Pull failed — resolve conflicts manually"
@@ -151,6 +156,7 @@ cmd_push() {
       fi
       if git push --quiet 2>/dev/null; then
         ok "Pushed"
+        log_sync "PUSH $repo"
       else
         err "Push failed"
         log_error "push failed in $repo"
@@ -240,6 +246,38 @@ cmd_check() {
   done < "$SYNCPATHS"
 
   echo -e "\n${BOLD}${valid}/${total} repos valid${NC}"
+}
+
+cmd_list() {
+  if [[ ! -f "$SYNCPATHS" ]]; then
+    err "$SYNCPATHS not found"
+    exit 1
+  fi
+
+  local count=0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    local clean="${line%%#*}"
+    clean="$(echo "$clean" | xargs)"
+    [[ -z "$clean" ]] && continue
+    echo "  $clean"
+    count=$((count + 1))
+  done < "$SYNCPATHS"
+
+  if [[ "$count" -eq 0 ]]; then
+    info "No repos configured. Run: syncd add <path>"
+  else
+    info "$count repo(s)"
+  fi
+}
+
+cmd_log() {
+  if [[ ! -f "$LOGFILE" ]]; then
+    info "No log yet"
+    return
+  fi
+
+  local lines="${1:-20}"
+  tail -n "$lines" "$LOGFILE"
 }
 
 cmd_add() {
@@ -386,6 +424,8 @@ Commands:
   status            Show status of all repos
   check             Validate ~/.syncdrc entries
   add <path>        Add a repo to ~/.syncdrc
+  list              Show configured repos
+  log [N]           Show last N log entries (default 20)
   cron on [30m]     Enable cron for syncd push (e.g. 15m, 1h)
   cron off          Disable cron
   cron status       Show current cron config
@@ -404,6 +444,8 @@ case "${1:-help}" in
   status) cmd_status ;;
   check)  cmd_check ;;
   add)    cmd_add "${2:-}" ;;
+  list)   cmd_list ;;
+  log)    cmd_log "${2:-20}" ;;
   cron)   cmd_cron "${2:-}" "${3:-}" ;;
   help|--help|-h) cmd_help ;;
   *)
