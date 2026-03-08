@@ -1,0 +1,347 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="0.1.0"
+SYNCPATHS="$HOME/.syncpaths"
+LOGFILE="$HOME/.syncd.log"
+HOSTNAME=$(hostname -s)
+DATE=$(date '+%Y-%m-%d %H:%M')
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log_error() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOGFILE"
+}
+
+warn() {
+  echo -e "${YELLOW}⚠ $*${NC}"
+}
+
+info() {
+  echo -e "${CYAN}→ $*${NC}"
+}
+
+ok() {
+  echo -e "${GREEN}✓ $*${NC}"
+}
+
+err() {
+  echo -e "${RED}✗ $*${NC}"
+}
+
+header() {
+  echo -e "\n${BOLD}[$1]${NC}"
+}
+
+# Read and validate ~/.syncpaths, populate REPOS array
+load_repos() {
+  REPOS=()
+  if [[ ! -f "$SYNCPATHS" ]]; then
+    err "$SYNCPATHS not found. Create it with one repo path per line."
+    exit 1
+  fi
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip empty lines and comments
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    [[ -z "$line" ]] && continue
+
+    # Expand ~
+    path="${line/#\~/$HOME}"
+
+    if [[ ! -d "$path" ]]; then
+      warn "$path — directory not found, skipping"
+      continue
+    fi
+
+    if [[ ! -d "$path/.git" ]]; then
+      warn "$path — not a git repo, skipping"
+      continue
+    fi
+
+    REPOS+=("$path")
+  done < "$SYNCPATHS"
+
+  if [[ ${#REPOS[@]} -eq 0 ]]; then
+    err "No valid repos found in $SYNCPATHS"
+    exit 1
+  fi
+}
+
+# --- Commands ---
+
+cmd_pull() {
+  load_repos
+  for repo in "${REPOS[@]}"; do
+    header "$(basename "$repo")"
+
+    cd "$repo"
+
+    local stashed=false
+    if [[ -n "$(git status --porcelain)" ]]; then
+      info "Stashing local changes..."
+      if git stash push -m "syncd auto-stash $DATE" --quiet 2>/dev/null; then
+        stashed=true
+      else
+        warn "Stash failed, pulling anyway"
+      fi
+    fi
+
+    if git pull --rebase --quiet 2>/dev/null; then
+      ok "Pulled ($(git rev-parse --abbrev-ref HEAD))"
+    else
+      err "Pull failed"
+      log_error "pull failed in $repo"
+      if [[ "$stashed" == true ]]; then
+        git rebase --abort 2>/dev/null || true
+      fi
+    fi
+
+    if [[ "$stashed" == true ]]; then
+      if git stash pop --quiet 2>/dev/null; then
+        ok "Stash restored"
+      else
+        warn "Stash pop had conflicts — resolve manually"
+        log_error "stash pop conflict in $repo"
+      fi
+    fi
+  done
+}
+
+cmd_push() {
+  load_repos
+  for repo in "${REPOS[@]}"; do
+    cd "$repo"
+
+    if [[ -z "$(git status --porcelain)" ]]; then
+      continue
+    fi
+
+    header "$(basename "$repo")"
+
+    git add -A
+    if git commit -m "syncd: $DATE — $HOSTNAME" --quiet 2>/dev/null; then
+      if git push --quiet 2>/dev/null; then
+        ok "Pushed"
+      else
+        err "Push failed"
+        log_error "push failed in $repo"
+      fi
+    else
+      err "Commit failed"
+      log_error "commit failed in $repo"
+    fi
+  done
+}
+
+cmd_status() {
+  load_repos
+  for repo in "${REPOS[@]}"; do
+    header "$(basename "$repo")"
+
+    cd "$repo"
+
+    local branch
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "???")
+
+    # Ahead/behind
+    local upstream
+    upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
+    if [[ -n "$upstream" ]]; then
+      local ahead behind
+      ahead=$(git rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)
+      behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
+      local sync_info=""
+      [[ "$ahead" -gt 0 ]] && sync_info+=" ↑${ahead}"
+      [[ "$behind" -gt 0 ]] && sync_info+=" ↓${behind}"
+      [[ -z "$sync_info" ]] && sync_info=" ≡"
+      info "branch: ${branch}${sync_info}"
+    else
+      info "branch: ${branch} (no upstream)"
+    fi
+
+    # Local changes
+    local changes
+    changes=$(git status --porcelain)
+    if [[ -n "$changes" ]]; then
+      local count
+      count=$(echo "$changes" | wc -l | xargs)
+      warn "$count file(s) with local changes"
+    else
+      ok "Clean"
+    fi
+  done
+}
+
+cmd_check() {
+  if [[ ! -f "$SYNCPATHS" ]]; then
+    err "$SYNCPATHS not found"
+    exit 1
+  fi
+
+  echo -e "${BOLD}Checking $SYNCPATHS${NC}\n"
+
+  local total=0 valid=0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    line="$(echo "$line" | xargs)"
+    [[ -z "$line" ]] && continue
+
+    path="${line/#\~/$HOME}"
+    total=$((total + 1))
+
+    if [[ ! -d "$path" ]]; then
+      err "$path — directory not found"
+      continue
+    fi
+
+    if [[ ! -d "$path/.git" ]]; then
+      err "$path — not a git repo"
+      continue
+    fi
+
+    local branch
+    branch=$(git -C "$path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "???")
+
+    local remote
+    remote=$(git -C "$path" remote get-url origin 2>/dev/null || echo "no remote")
+
+    ok "$path ($branch) → $remote"
+    valid=$((valid + 1))
+  done < "$SYNCPATHS"
+
+  echo -e "\n${BOLD}${valid}/${total} repos valid${NC}"
+}
+
+CRON_TAG="# syncd-cron"
+SYNCD_LINK="$HOME/bin/syncd"
+
+parse_interval() {
+  local input="$1"
+  local number="${input%[mh]}"
+  local unit="${input: -1}"
+
+  if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+    err "Invalid interval: $input (use e.g. 15m, 1h)"
+    exit 1
+  fi
+
+  case "$unit" in
+    m)
+      if [[ "$number" -lt 1 || "$number" -gt 59 ]]; then
+        err "Minutes must be between 1 and 59"
+        exit 1
+      fi
+      echo "*/$number * * * *"
+      ;;
+    h)
+      if [[ "$number" -lt 1 || "$number" -gt 23 ]]; then
+        err "Hours must be between 1 and 23"
+        exit 1
+      fi
+      echo "0 */$number * * *"
+      ;;
+    *)
+      err "Invalid interval: $input (use e.g. 15m, 1h)"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_cron() {
+  local subcmd="${1:-status}"
+
+  case "$subcmd" in
+    on)
+      local interval="${2:-30m}"
+      local schedule
+      schedule=$(parse_interval "$interval")
+      local cron_line="$schedule $SYNCD_LINK push $CRON_TAG"
+
+      # Remove existing syncd cron entry if any
+      local current
+      current=$(crontab -l 2>/dev/null || true)
+      local filtered
+      filtered=$(echo "$current" | grep -v "$CRON_TAG" || true)
+
+      # Add new entry
+      if [[ -n "$filtered" ]]; then
+        printf '%s\n%s\n' "$filtered" "$cron_line" | crontab -
+      else
+        echo "$cron_line" | crontab -
+      fi
+      ok "Cron enabled: syncd push every $interval"
+      info "Schedule: $schedule"
+      ;;
+    off)
+      local current
+      current=$(crontab -l 2>/dev/null || true)
+      if echo "$current" | grep -q "$CRON_TAG"; then
+        echo "$current" | grep -v "$CRON_TAG" | crontab -
+        ok "Cron disabled"
+      else
+        info "No syncd cron entry found"
+      fi
+      ;;
+    status)
+      local entry
+      entry=$(crontab -l 2>/dev/null | grep "$CRON_TAG" || true)
+      if [[ -n "$entry" ]]; then
+        ok "Cron is active"
+        info "$entry"
+      else
+        info "Cron is not configured"
+      fi
+      ;;
+    *)
+      err "Unknown cron subcommand: $subcmd"
+      echo "Usage: syncd cron [on [interval]|off|status]"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_help() {
+  cat <<HELP
+syncd v${VERSION} — git repo sync tool
+
+Usage: syncd <command>
+
+Commands:
+  pull              Pull all repos (stash/rebase/pop)
+  push              Commit and push repos with changes
+  status            Show status of all repos
+  check             Validate ~/.syncpaths entries
+  cron on [30m]     Enable cron for syncd push (e.g. 15m, 1h)
+  cron off          Disable cron
+  cron status       Show current cron config
+  help              Show this help
+
+Config: ~/.syncpaths (one repo path per line, supports ~, # comments)
+Log:    ~/.syncd.log
+HELP
+}
+
+# --- Main ---
+
+case "${1:-help}" in
+  pull)   cmd_pull ;;
+  push)   cmd_push ;;
+  status) cmd_status ;;
+  check)  cmd_check ;;
+  cron)   cmd_cron "${2:-}" "${3:-}" ;;
+  help|--help|-h) cmd_help ;;
+  *)
+    err "Unknown command: $1"
+    cmd_help
+    exit 1
+    ;;
+esac
