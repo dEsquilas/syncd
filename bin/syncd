@@ -98,35 +98,40 @@ cmd_pull() {
     local stashed=false
     if [[ -n "$(git status --porcelain)" ]]; then
       info "Stashing local changes..."
-      if git stash push --include-untracked -m "syncd auto-stash $DATE" --quiet 2>/dev/null; then
+      local stash_out
+      if stash_out=$(git stash push --include-untracked -m "syncd auto-stash $DATE" --quiet 2>&1); then
         stashed=true
       else
         warn "Stash failed — skipping repo to protect local changes"
-        log_error "stash failed in $repo, skipping pull"
+        log_error "stash failed in $repo: $stash_out"
         continue
       fi
     fi
 
     local pull_ok=false
-    if git pull --quiet 2>/dev/null; then
+    local pull_out
+    if pull_out=$(git pull --quiet 2>&1); then
       ok "Pulled ($(git rev-parse --abbrev-ref HEAD))"
       log_sync "PULL $repo"
       pull_ok=true
     else
       err "Pull failed — resolve conflicts manually"
-      log_error "pull failed in $repo"
+      log_error "pull failed in $repo: $pull_out"
     fi
 
     if [[ "$stashed" == true ]]; then
       if [[ "$pull_ok" == false ]]; then
         warn "Stash kept (pull failed) — your changes are safe in git stash"
         info "Run 'git stash pop' in $repo after resolving conflicts"
-      elif git stash pop --quiet 2>/dev/null; then
-        ok "Stash restored"
       else
-        warn "Stash pop had conflicts — resolve manually"
-        info "Your changes are safe in git stash"
-        log_error "stash pop conflict in $repo"
+        local pop_out
+        if pop_out=$(git stash pop --quiet 2>&1); then
+          ok "Stash restored"
+        else
+          warn "Stash pop had conflicts — resolve manually"
+          info "Your changes are safe in git stash"
+          log_error "stash pop conflict in $repo: $pop_out"
+        fi
       fi
     fi
   done
@@ -144,9 +149,10 @@ cmd_push() {
     header "$(basename "$repo")"
 
     git add -A
-    if git commit -m "syncd: $DATE — $HOSTNAME" --quiet 2>/dev/null; then
+    local git_out
+    if git_out=$(git commit -m "syncd: $DATE — $HOSTNAME" --quiet 2>&1); then
       # Fetch and pull if remote is ahead before pushing
-      git fetch --quiet 2>/dev/null || true
+      git fetch --quiet 2>&1 || true
       local upstream
       upstream=$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo "")
       if [[ -n "$upstream" ]]; then
@@ -154,23 +160,24 @@ cmd_push() {
         behind=$(git rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)
         if [[ "$behind" -gt 0 ]]; then
           info "Remote is ahead by $behind commit(s), pulling..."
-          if ! git pull --quiet 2>/dev/null; then
+          local pull_out
+          if ! pull_out=$(git pull --quiet 2>&1); then
             err "Pull failed — resolve conflicts manually"
-            log_error "pull failed before push in $repo"
+            log_error "pull failed before push in $repo: $pull_out"
             continue
           fi
         fi
       fi
-      if git push --quiet 2>/dev/null; then
+      if git_out=$(git push --quiet 2>&1); then
         ok "Pushed"
         log_sync "PUSH $repo"
       else
         err "Push failed"
-        log_error "push failed in $repo"
+        log_error "push failed in $repo: $git_out"
       fi
     else
       err "Commit failed"
-      log_error "commit failed in $repo"
+      log_error "commit failed in $repo: $git_out"
     fi
   done
 }
