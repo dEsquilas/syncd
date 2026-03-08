@@ -1,6 +1,6 @@
 # syncd
 
-Unattended git repo sync across machines. Built specifically to keep [Claude Code Cowork](https://docs.anthropic.com/en/docs/claude-code/cowork) conversations in sync — so you can start a cowork session on one machine and continue it on another without missing a beat. Also works great for config repos, dotfiles, notes, and anything else that needs to stay in sync without thinking about it.
+Unattended git repo sync across machines. Built specifically to keep [Claude Code Cowork](https://claude.com/product/cowork) conversations in sync — so you can start a cowork session on one machine and continue it on another without missing a beat. Also works great for config repos, dotfiles, notes, and anything else that needs to stay in sync without thinking about it.
 
 ## How it works
 
