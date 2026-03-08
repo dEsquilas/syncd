@@ -50,16 +50,35 @@ else
 fi
 
 # 4. PATH check
+shell_name=$(basename "${SHELL:-/bin/bash}")
+case "$shell_name" in
+  zsh)  rc_file="$HOME/.zshrc" ;;
+  bash) rc_file="$HOME/.bashrc" ;;
+  fish) rc_file="$HOME/.config/fish/config.fish" ;;
+  *)    rc_file="$HOME/.profile" ;;
+esac
+
 if echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/bin"; then
   ok "~/bin is in PATH"
+elif grep -qs 'HOME/bin' "$rc_file"; then
+  ok "~/bin is configured in $rc_file (restart shell or run: source $rc_file)"
 else
   warn "~/bin is NOT in PATH"
-  read -rp "  Add to ~/.zshrc? [y/N] " answer
+  read -rp "  Add to $rc_file? [y/N] " answer
   if [[ "$answer" =~ ^[yY]$ ]]; then
-    echo '' >> "$HOME/.zshrc"
-    echo '# syncd' >> "$HOME/.zshrc"
-    echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.zshrc"
-    ok "Added to ~/.zshrc — run: source ~/.zshrc"
+    if [[ "$shell_name" == "fish" ]]; then
+      mkdir -p "$(dirname "$rc_file")"
+      echo '' >> "$rc_file"
+      echo '# syncd' >> "$rc_file"
+      echo 'set -gx PATH $HOME/bin $PATH' >> "$rc_file"
+    else
+      echo '' >> "$rc_file"
+      echo '# syncd' >> "$rc_file"
+      echo 'export PATH="$HOME/bin:$PATH"' >> "$rc_file"
+    fi
+    ok "Added to $rc_file"
+    export PATH="$HOME/bin:$PATH"
+    ok "PATH updated for current session"
   else
     info "Add manually: export PATH=\"\$HOME/bin:\$PATH\""
   fi
@@ -103,18 +122,30 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 done < "$SYNCPATHS"
 
 # 7. Cron setup
+CRON_TAG="# syncd-cron"
 echo ""
-read -rp "Set up cron for 'syncd push' every 30 min? [y/N] " cron_answer
-if [[ "$cron_answer" =~ ^[yY]$ ]]; then
-  cron_line="*/30 * * * * $LINK_PATH push"
-  if crontab -l 2>/dev/null | grep -qF "syncd push"; then
-    ok "Cron entry already exists"
-  else
-    (crontab -l 2>/dev/null; echo "$cron_line") | crontab -
-    ok "Cron added: $cron_line"
-  fi
+if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
+  ok "Cron already configured"
 else
-  info "Skipped cron setup"
+  read -rp "Set up cron for 'syncd push' every 30 min? [y/N] " cron_answer
+  if [[ "$cron_answer" =~ ^[yY]$ ]]; then
+    cron_line="*/30 * * * * $LINK_PATH push $CRON_TAG"
+    current=$(crontab -l 2>/dev/null || true)
+    # Remove any old syncd entries without the tag
+    filtered=$(echo "$current" | grep -v "syncd push" || true)
+    if [[ -n "$filtered" ]]; then
+      printf '%s\n%s\n' "$filtered" "$cron_line" | crontab -
+    else
+      echo "$cron_line" | crontab -
+    fi
+    ok "Cron added: $cron_line"
+  else
+    info "Skipped cron setup"
+  fi
 fi
 
-echo -e "\n${BOLD}Done!${NC} Run: syncd help"
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/bin"; then
+  echo -e "\n${BOLD}Done!${NC} Run: ${YELLOW}source ~/.zshrc${NC} then: syncd help"
+else
+  echo -e "\n${BOLD}Done!${NC} Run: syncd help"
+fi
