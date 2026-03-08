@@ -5,7 +5,6 @@ VERSION="0.1.0"
 SYNCPATHS="$HOME/.syncdrc"
 LOGFILE="$HOME/.syncd.log"
 HOSTNAME=$(hostname -s)
-DATE=$(date '+%Y-%m-%d %H:%M')
 
 # Colors
 RED='\033[0;31m'
@@ -99,7 +98,7 @@ cmd_pull() {
     if [[ -n "$(git status --porcelain)" ]]; then
       info "Stashing local changes..."
       local stash_out
-      if stash_out=$(git stash push --include-untracked -m "syncd auto-stash $DATE" --quiet 2>&1); then
+      if stash_out=$(git stash push --include-untracked -m "syncd auto-stash $(date '+%Y-%m-%d %H:%M')" --quiet 2>&1); then
         stashed=true
       else
         warn "Stash failed — skipping repo to protect local changes"
@@ -150,7 +149,7 @@ cmd_push() {
 
     git add -A
     local git_out
-    if git_out=$(git commit -m "syncd: $DATE — $HOSTNAME" --quiet 2>&1); then
+    if git_out=$(git commit -m "syncd: $(date '+%Y-%m-%d %H:%M') — $HOSTNAME" --quiet 2>&1); then
       # Fetch and pull if remote is ahead before pushing
       git fetch --quiet 2>&1 || true
       local upstream
