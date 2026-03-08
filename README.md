@@ -4,7 +4,7 @@ Unattended git repo sync across machines. Designed for config repos, dotfiles, n
 
 ## How it works
 
-syncd reads a list of local repo paths from `~/.syncpaths` and runs git operations on all of them at once.
+syncd reads a list of local repo paths from `~/.syncdrc` and runs git operations on all of them at once.
 
 ## Install
 
@@ -19,13 +19,13 @@ The installer is idempotent and will:
 1. Create `~/bin` if needed
 2. Symlink `~/bin/syncd` to the script
 3. Offer to add `~/bin` to PATH in `~/.zshrc`
-4. Create `~/.syncpaths` from the example if it doesn't exist
+4. Create `~/.syncdrc` from the example if it doesn't exist
 5. Validate all configured repo paths
 6. Optionally set up a cron job for `syncd push`
 
 ## Configuration
 
-Edit `~/.syncpaths` — one repo path per line:
+Edit `~/.syncdrc` — one repo path per line:
 
 ```
 # Comments start with #
@@ -66,7 +66,7 @@ Shows the state of each repo at a glance:
 
 ### `syncd add <path>`
 
-Adds a repo to `~/.syncpaths`. Validates that the path exists and contains a git repo. Detects duplicates. Paths are stored with `~` notation.
+Adds a repo to `~/.syncdrc`. Validates that the path exists and contains a git repo. Detects duplicates. Paths are stored with `~` notation.
 
 ```bash
 syncd add ~/Develop/dotfiles
@@ -75,7 +75,7 @@ syncd add .                    # current directory
 
 ### `syncd check`
 
-Validates that every path in `~/.syncpaths`:
+Validates that every path in `~/.syncdrc`:
 - Exists as a directory
 - Contains a git repo (`.git/`)
 
@@ -103,7 +103,7 @@ Shows whether the cron job is active and its current schedule.
 
 ## Error handling
 
-- Invalid paths in `~/.syncpaths` are warned and skipped — they never abort the whole run
+- Invalid paths in `~/.syncdrc` are warned and skipped — they never abort the whole run
 - `push` is silent when there are no changes (designed for cron)
 - Errors are logged to `~/.syncd.log`
 - Stash conflicts during `pull` are flagged for manual resolution

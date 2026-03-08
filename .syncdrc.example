@@ -1,0 +1,6 @@
+# syncd — one repo path per line
+# Lines starting with # are ignored
+# ~ is expanded to $HOME
+
+# ~/Develop/my-syncd-repo
+# ~/Develop/another-syncd-repo

@@ -7,12 +7,12 @@ Unattended git repo sync tool. Single bash script at `bin/syncd`, installed via 
 ```
 bin/syncd            # Main script — all commands live here
 install.sh           # Idempotent installer (symlink, PATH, cron)
-.syncpaths.example   # Template for ~/.syncpaths
+.syncdrc.example   # Template for ~/.syncdrc
 ```
 
 ## Key files
 
-- `~/.syncpaths` — user config, one repo path per line (created by install.sh)
+- `~/.syncdrc` — user config, one repo path per line (created by install.sh)
 - `~/.syncd.log` — error log (appended by syncd on failures)
 - `~/bin/syncd` — symlink to bin/syncd in this repo
 

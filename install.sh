@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SYNCD_BIN="$SCRIPT_DIR/bin/syncd"
 LINK_PATH="$HOME/bin/syncd"
-SYNCPATHS="$HOME/.syncpaths"
-EXAMPLE="$SCRIPT_DIR/.syncpaths.example"
+SYNCPATHS="$HOME/.syncdrc"
+EXAMPLE="$SCRIPT_DIR/.syncdrc.example"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -65,7 +65,7 @@ else
   fi
 fi
 
-# 5. Create ~/.syncpaths
+# 5. Create ~/.syncdrc
 if [[ ! -f "$SYNCPATHS" ]]; then
   if [[ -f "$EXAMPLE" ]]; then
     cp "$EXAMPLE" "$SYNCPATHS"
@@ -85,7 +85,7 @@ else
 fi
 
 # 6. Validate syncpaths
-echo -e "\n${BOLD}Validating ~/.syncpaths${NC}"
+echo -e "\n${BOLD}Validating ~/.syncdrc${NC}"
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line%%#*}"
   line="$(echo "$line" | xargs)"
