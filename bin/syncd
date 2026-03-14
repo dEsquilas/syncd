@@ -313,7 +313,7 @@ cmd_add() {
   fi
 
   # Convert to ~ notation for readability
-  local display_path="${abs_path/#$HOME/\~}"
+  local display_path="${abs_path/#$HOME/~}"
 
   # Check if already present
   while IFS= read -r line || [[ -n "$line" ]]; do
