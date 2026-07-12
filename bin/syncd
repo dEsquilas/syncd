@@ -340,6 +340,9 @@ cmd_add() {
 
 CRON_TAG="# syncd-cron"
 SYNCD_LINK="$HOME/bin/syncd"
+AGENT_LABEL="com.syncd.push"
+AGENT_PLIST="$HOME/Library/LaunchAgents/${AGENT_LABEL}.plist"
+LAUNCHD_LOG="$HOME/.syncd.launchd.log"
 
 parse_interval() {
   local input="$1"
@@ -373,7 +376,149 @@ parse_interval() {
   esac
 }
 
+parse_interval_seconds() {
+  local input="$1"
+  local number="${input%[mh]}"
+  local unit="${input: -1}"
+
+  if ! [[ "$number" =~ ^[0-9]+$ ]]; then
+    err "Invalid interval: $input (use e.g. 15m, 1h)"
+    exit 1
+  fi
+
+  case "$unit" in
+    m)
+      if [[ "$number" -lt 1 || "$number" -gt 59 ]]; then
+        err "Minutes must be between 1 and 59"
+        exit 1
+      fi
+      echo "$((number * 60))"
+      ;;
+    h)
+      if [[ "$number" -lt 1 || "$number" -gt 23 ]]; then
+        err "Hours must be between 1 and 23"
+        exit 1
+      fi
+      echo "$((number * 3600))"
+      ;;
+    *)
+      err "Invalid interval: $input (use e.g. 15m, 1h)"
+      exit 1
+      ;;
+  esac
+}
+
+# Scheduler dispatcher: launchd on macOS, crontab on Linux.
+# cron is deprecated on macOS (privacy protections stop it running user jobs),
+# so on Darwin we drive a launchd LaunchAgent instead — same command surface.
 cmd_cron() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    cron_launchd "$@"
+  else
+    cron_crontab "$@"
+  fi
+}
+
+cron_launchd() {
+  local subcmd="${1:-status}"
+  local uid domain
+  uid=$(id -u)
+  domain="gui/$uid"
+
+  case "$subcmd" in
+    on)
+      local interval="${2:-30m}"
+      local seconds
+      seconds=$(parse_interval_seconds "$interval")
+      local git_dir
+      git_dir="$(dirname "$(command -v git)")"
+
+      mkdir -p "$(dirname "$AGENT_PLIST")"
+      cat > "$AGENT_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${AGENT_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${SYNCD_LINK}</string>
+        <string>push</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>${git_dir}:/usr/bin:/bin</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>${seconds}</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>StandardOutPath</key>
+    <string>${LAUNCHD_LOG}</string>
+    <key>StandardErrorPath</key>
+    <string>${LAUNCHD_LOG}</string>
+</dict>
+</plist>
+PLIST
+
+      # Reload if already loaded, then load
+      launchctl bootout "$domain/$AGENT_LABEL" 2>/dev/null || true
+      if launchctl bootstrap "$domain" "$AGENT_PLIST" 2>/dev/null; then
+        ok "Scheduled: syncd push every $interval (launchd)"
+        info "Agent: $AGENT_PLIST"
+        info "Log:   $LAUNCHD_LOG"
+      else
+        err "Failed to load launchd agent"
+        log_error "launchctl bootstrap failed for $AGENT_PLIST"
+        exit 1
+      fi
+
+      # Migrate away from any legacy crontab entry
+      if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
+        crontab -l 2>/dev/null | grep -v "$CRON_TAG" | crontab -
+        info "Removed legacy cron entry (now handled by launchd)"
+      fi
+      ;;
+    off)
+      launchctl bootout "$domain/$AGENT_LABEL" 2>/dev/null || true
+      if [[ -f "$AGENT_PLIST" ]]; then
+        rm -f "$AGENT_PLIST"
+        ok "Unscheduled (launchd agent removed)"
+      else
+        info "No launchd agent configured"
+      fi
+      if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
+        crontab -l 2>/dev/null | grep -v "$CRON_TAG" | crontab -
+        info "Removed legacy cron entry"
+      fi
+      ;;
+    status)
+      if launchctl print "$domain/$AGENT_LABEL" >/dev/null 2>&1; then
+        ok "Scheduler is active (launchd)"
+        if [[ -f "$AGENT_PLIST" ]]; then
+          local secs
+          secs=$(plutil -extract StartInterval raw -o - "$AGENT_PLIST" 2>/dev/null || true)
+          [[ -n "$secs" ]] && info "Interval: every ${secs}s"
+          info "Agent: $AGENT_PLIST"
+          info "Log:   $LAUNCHD_LOG"
+        fi
+      else
+        info "Scheduler is not active"
+      fi
+      ;;
+    *)
+      err "Unknown cron subcommand: $subcmd"
+      echo "Usage: syncd cron [on [interval]|off|status]"
+      exit 1
+      ;;
+  esac
+}
+
+cron_crontab() {
   local subcmd="${1:-status}"
 
   case "$subcmd" in
@@ -442,13 +587,13 @@ Commands:
   add <path>        Add a repo to ~/.syncdrc
   list              Show configured repos
   log [N]           Show last N log entries (default 20)
-  cron on [30m]     Enable cron for syncd push (e.g. 15m, 1h)
-  cron off          Disable cron
-  cron status       Show current cron config
+  cron on [30m]     Schedule syncd push (launchd on macOS, cron on Linux)
+  cron off          Unschedule syncd push
+  cron status       Show schedule status
   help              Show this help
 
 Config: ~/.syncdrc (one repo path per line, supports ~, # comments)
-Log:    ~/.syncd.log
+Log:    ~/.syncd.log  (launchd stdout/stderr: ~/.syncd.launchd.log on macOS)
 HELP
 }
 

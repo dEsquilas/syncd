@@ -122,27 +122,23 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   fi
 done < "$SYNCPATHS"
 
-# 7. Cron setup
-CRON_TAG="# syncd-cron"
+# 7. Scheduler setup (launchd on macOS, cron on Linux)
 echo ""
-if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
-  ok "Cron already configured"
+scheduled=false
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  launchctl print "gui/$(id -u)/com.syncd.push" >/dev/null 2>&1 && scheduled=true
 else
-  read -rp "Set up cron for 'syncd push' every 30 min? [y/N] " cron_answer
-  if [[ "$cron_answer" =~ ^[yY]$ ]]; then
-    git_dir="$(dirname "$(command -v git)")"
-    cron_line="*/30 * * * * PATH=$git_dir:/usr/bin:/bin $LINK_PATH push $CRON_TAG"
-    current=$(crontab -l 2>/dev/null || true)
-    # Remove any old syncd entries without the tag
-    filtered=$(echo "$current" | grep -v "$CRON_TAG" || true)
-    if [[ -n "$filtered" ]]; then
-      printf '%s\n%s\n' "$filtered" "$cron_line" | crontab -
-    else
-      echo "$cron_line" | crontab -
-    fi
-    ok "Cron added: $cron_line"
+  crontab -l 2>/dev/null | grep -q "# syncd-cron" && scheduled=true
+fi
+
+if [[ "$scheduled" == true ]]; then
+  ok "Scheduler already configured"
+else
+  read -rp "Schedule 'syncd push' every 30 min? [y/N] " sched_answer
+  if [[ "$sched_answer" =~ ^[yY]$ ]]; then
+    "$LINK_PATH" cron on 30m
   else
-    info "Skipped cron setup"
+    info "Skipped scheduler setup"
   fi
 fi
 
