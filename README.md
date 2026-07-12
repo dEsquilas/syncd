@@ -21,7 +21,7 @@ The installer is idempotent and will:
 3. Offer to add `~/bin` to PATH in `~/.zshrc`
 4. Create `~/.syncdrc` from the example if it doesn't exist
 5. Validate all configured repo paths
-6. Optionally set up a cron job for `syncd push`
+6. Optionally schedule `syncd push` (launchd on macOS, cron on Linux)
 
 ## Configuration
 
@@ -91,7 +91,7 @@ Shows branch and remote URL for valid repos, and a summary of how many are valid
 
 ### `syncd cron on [interval]`
 
-Enables a cron job that runs `syncd push` on a schedule. Default interval is `30m`.
+Schedules `syncd push` to run automatically. Default interval is `30m`.
 
 ```bash
 syncd cron on         # every 30 minutes
@@ -99,15 +99,17 @@ syncd cron on 15m     # every 15 minutes
 syncd cron on 2h      # every 2 hours
 ```
 
-Running it again with a different interval replaces the previous entry. Only enable on your primary machine to avoid conflicts.
+On **macOS** this installs a launchd LaunchAgent (`~/Library/LaunchAgents/com.syncd.push.plist`) instead of a cron job — modern macOS privacy protections stop cron from running user jobs reliably. Its output is captured to `~/.syncd.launchd.log`. On **Linux** it installs a crontab entry.
+
+Running it again with a different interval replaces the previous schedule (and switching to launchd clears any leftover cron entry). Only enable on your primary machine to avoid conflicts.
 
 ### `syncd cron off`
 
-Removes the syncd cron entry. Does not touch other cron jobs.
+Removes the schedule — the launchd agent on macOS, or the crontab entry on Linux. Does not touch other cron jobs.
 
 ### `syncd cron status`
 
-Shows whether the cron job is active and its current schedule.
+Shows whether the scheduler is active and its interval.
 
 ## Error handling
 
