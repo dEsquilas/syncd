@@ -137,7 +137,14 @@ cmd_pull() {
 cmd_push() {
   load_repos
   for repo in "${REPOS[@]}"; do
-    if [[ -z "$(git -C "$repo" status --porcelain)" ]]; then
+    local status_out status_rc
+    status_out=$(git -C "$repo" status --porcelain 2>&1) && status_rc=0 || status_rc=$?
+    if [[ "$status_rc" -ne 0 ]]; then
+      err "$(basename "$repo") — git status failed, skipping"
+      log_error "git status failed in $repo: $status_out"
+      continue
+    fi
+    if [[ -z "$status_out" ]]; then
       continue
     fi
 
